@@ -1,5 +1,5 @@
-import { Request, Response, NextFunction } from "express";
-import { auth } from "../lib/auth.ts";
+import type { Request, Response, NextFunction } from "express";
+import  { auth } from "../lib/auth.ts";
 
 export const requireAuth = async (
   req: Request,
@@ -8,7 +8,7 @@ export const requireAuth = async (
 ) => {
   try {
     const session = await auth.api.getSession({
-      headers: req.headers,
+      headers: req.headers as any,
     });
 
     if (!session) {

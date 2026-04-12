@@ -5,7 +5,7 @@ import { auth } from "../lib/auth.ts";
 export const getSession = async (req: Request, res: Response) => {
   try {
     const session = await auth.api.getSession({
-      headers: req.headers,
+      headers: req.headers as any,
     });
 
     return res.status(200).json({

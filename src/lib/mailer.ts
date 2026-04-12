@@ -1,9 +1,10 @@
-import nodemailer from "nodemailer";
+import nodemailer from "nodemailer" ;
 
 const getRequiredEnv = (name: string) => {
   const value = process.env[name];
 
   if (!value) {
+    
     throw new Error(`Missing required environment variable: ${name}`);
   }
 
