@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 
 import { auth } from "../lib/auth.ts";
+import { buildSessionUser } from "../lib/users.ts";
 
 export const getSession = async (req: Request, res: Response) => {
   try {
@@ -10,7 +11,7 @@ export const getSession = async (req: Request, res: Response) => {
 
     return res.status(200).json({
       authenticated: Boolean(session),
-      user: session?.user ?? null,
+      user: await buildSessionUser(session?.user ?? null),
       session: session?.session ?? null,
     });
   } catch (error) {

@@ -5,8 +5,10 @@ export const connectDB = async ()=>{
         const conn = await mongoose.connect(process.env.MONGODB_URI as string);
 
         console.log(`MongoDB Connected: ${conn.connection.host}`)
-    } catch (error) {
-        console.error("Database connection faild " , error);
+    } catch (error : any) {
+        console.error("Database connection faild " , error.message);
         process.exit(1);
+        
     }
+    
 }

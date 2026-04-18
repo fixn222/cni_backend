@@ -1,6 +1,5 @@
 import mongoose, { Schema, Document } from "mongoose";
 
-// 🔥 TypeScript type (extends Document)
 export interface CountryDocument extends Document {
   code: string;
   name: string;
@@ -11,14 +10,13 @@ export interface CountryDocument extends Document {
   selected?: boolean;
 }
 
-// 🔥 Schema
 const countrySchema = new Schema<CountryDocument>(
   {
     code: {
       type: String,
       required: true,
       unique: true,
-      uppercase: true, // 🔥 normalize
+      uppercase: true, //  normalize
     },
 
     name: {
@@ -58,7 +56,6 @@ const countrySchema = new Schema<CountryDocument>(
   }
 );
 
-// 🔥 Model
 export const Country = mongoose.model<CountryDocument>(
   "Country",
   countrySchema

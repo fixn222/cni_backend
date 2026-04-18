@@ -1,4 +1,4 @@
-import express, { Router } from "express";
+import express from "express";
 import dotenv from "dotenv"
 // import authRoute from "./routes/auth.route.ts"
 import { connectDB } from "./config/db.ts";
@@ -9,11 +9,7 @@ import { getSession } from "./routes/session.ts";
 import countryRoutes from "./routes/country.route.ts"
 import feedBackRoutes from "./routes/feeback.route.ts"
 import applicationRoutes from "./routes/applictaion.route.ts"
-import { User } from "./models/user.model.ts";
-
-
-
-
+import adminRoutes from "./routes/admin.route.ts"
 dotenv.config()
 
 
@@ -34,6 +30,8 @@ app.use("/api/auth/*splat", toNodeHandler(auth));
 app.use('/api/countries', countryRoutes)
 app.use("/api/feedback/" , feedBackRoutes );
 app.use("/api/application/" , applicationRoutes )
+app.use("/api/applications", applicationRoutes)
+app.use("/api/admin", adminRoutes)
 
 
 

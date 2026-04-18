@@ -4,7 +4,8 @@ import { requireAuth } from "../middleware/auth.middleware.ts";
 
 const router = express.Router();
 
-router.get("/" ,getFeedbacks);
+router.get("/", requireAuth ,getFeedbacks);
+
 router.post("/create" , requireAuth , createFeedback)
 
 export default router

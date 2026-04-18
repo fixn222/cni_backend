@@ -126,6 +126,7 @@ export const sendResetPasswordEmail = async ({
   await getTransporter().sendMail({
     from: getFromAddress(),
     to,
+    
     subject,
     text: content.text,
     html: content.html,
@@ -203,4 +204,195 @@ This code will expire soon.`,
       </div>
     `,
   });
+};
+
+export const sendApplicationConfirmationEmail = async ({
+  to,
+  name,
+  countryName,
+  applicationId,
+}: {
+  to: string;
+  name?: string | null;
+  countryName: string;
+  applicationId: string;
+}) => {
+  const subject = "Your Visa Application Has Been Submitted - CNI Global";
+  const content = buildEmailLayout({
+    heading: "Application Submitted Successfully",
+    intro: `Hi ${name ?? "there"}, your visa application for ${countryName} has been successfully submitted. Our team will review your application and get back to you soon.`,
+    actionLabel: "View Application",
+    actionUrl: `${process.env.FRONT_END_URL}/dashboard/applications/${applicationId}`,
+    footer: "If you have any questions, please contact our support team.",
+  });
+
+  await getTransporter().sendMail({
+    from: getFromAddress(),
+    to,
+    subject,
+    text: content.text,
+    html: content.html,
+  });
+};
+
+export const sendAdminNewApplicationNotificationEmail = async ({
+  to,
+  applicantName,
+  countryName,
+  visaType,
+}: {
+  to: string;
+  applicantName: string;
+  countryName: string;
+  visaType: string;
+}) => {
+  await getTransporter().sendMail({
+    from: getFromAddress(),
+    to,
+    subject: "New Visa Application Submitted",
+    text: `A new visa application has been submitted.
+
+Applicant: ${applicantName}
+Country: ${countryName}
+Visa Type: ${visaType}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; background: #f8fafc; padding: 32px;">
+        <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border-radius: 16px; padding: 32px; border: 1px solid #e2e8f0;">
+          <p style="margin: 0 0 12px; font-size: 12px; letter-spacing: 0.18em; color: #0f766e; font-weight: 700;">
+            CNI GLOBAL
+          </p>
+          <h1 style="margin: 0 0 16px; font-size: 28px; line-height: 1.2; color: #0f172a;">
+            New Visa Application Submitted
+          </h1>
+          <p style="margin: 0 0 10px; font-size: 16px; line-height: 1.7; color: #334155;">
+            A new application is ready for admin review.
+          </p>
+          <ul style="padding-left: 18px; margin: 16px 0 0; color: #334155; line-height: 1.8;">
+            <li><strong>Applicant:</strong> ${applicantName}</li>
+            <li><strong>Country:</strong> ${countryName}</li>
+            <li><strong>Visa Type:</strong> ${visaType}</li>
+          </ul>
+        </div>
+      </div>
+    `,
+  });
+};
+
+export const sendAdminClientEmail = async ({
+  to,
+  subject,
+  message,
+}: {
+  to: string;
+  subject: string;
+  message: string;
+}) => {
+  await getTransporter().sendMail({
+    from: getFromAddress(),
+    to,
+    subject,
+    text: message,
+    html: `
+      <div style="font-family: Arial, sans-serif; background: #f8fafc; padding: 32px;">
+        <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border-radius: 16px; padding: 32px; border: 1px solid #e2e8f0;">
+          <p style="margin: 0 0 12px; font-size: 12px; letter-spacing: 0.18em; color: #0f766e; font-weight: 700;">
+            CNI GLOBAL
+          </p>
+          <h1 style="margin: 0 0 16px; font-size: 28px; line-height: 1.2; color: #0f172a;">
+            ${subject}
+          </h1>
+          <div style="font-size: 16px; line-height: 1.8; color: #334155; white-space: pre-wrap;">${message}</div>
+        </div>
+      </div>
+    `,
+  });
+};
+
+export const sendApplicationStatusUpdateEmail = async ({
+  to,
+  name,
+  status,
+  countryName,
+}: {
+  to: string;
+  name?: string | null;
+  status: "pending" | "approved" | "rejected";
+  countryName: string;
+}) => {
+  const statusTitle =
+    status === "approved"
+      ? "Application approved"
+      : status === "rejected"
+        ? "Application update"
+        : "Application moved to pending review";
+
+  const intro = `Hi ${name ?? "there"}, your visa application for ${countryName} is now marked as ${status}. We will contact you for more details and guide you through the next steps.`;
+
+  await getTransporter().sendMail({
+    from: getFromAddress(),
+    to,
+    subject: `Your Visa Application Status: ${statusTitle}`,
+    text: intro,
+    html: `
+      <div style="font-family: Arial, sans-serif; background: #f8fafc; padding: 32px;">
+        <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border-radius: 16px; padding: 32px; border: 1px solid #e2e8f0;">
+          <p style="margin: 0 0 12px; font-size: 12px; letter-spacing: 0.18em; color: #0f766e; font-weight: 700;">
+            CNI GLOBAL
+          </p>
+          <h1 style="margin: 0 0 16px; font-size: 28px; line-height: 1.2; color: #0f172a;">
+            ${statusTitle}
+          </h1>
+          <p style="margin: 0; font-size: 16px; line-height: 1.8; color: #334155;">
+            ${intro}
+          </p>
+        </div>
+      </div>
+    `,
+  });
+};
+
+export const sendUserMessageToAdminsEmail = async ({
+  recipients,
+  fromName,
+  fromEmail,
+  subject,
+  message,
+}: {
+  recipients: string[];
+  fromName?: string | null;
+  fromEmail: string;
+  subject: string;
+  message: string;
+}) => {
+  if (recipients.length === 0) {
+    return;
+  }
+
+  await Promise.all(
+    recipients.map((recipient) =>
+      getTransporter().sendMail({
+        from: getFromAddress(),
+        to: recipient,
+        subject: `Client Message: ${subject}`,
+        text: `Client: ${fromName ?? "Unknown"}\nEmail: ${fromEmail}\n\n${message}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; background: #f8fafc; padding: 32px;">
+            <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border-radius: 16px; padding: 32px; border: 1px solid #e2e8f0;">
+              <p style="margin: 0 0 12px; font-size: 12px; letter-spacing: 0.18em; color: #0f766e; font-weight: 700;">
+                CNI GLOBAL
+              </p>
+              <h1 style="margin: 0 0 16px; font-size: 28px; line-height: 1.2; color: #0f172a;">
+                Client Message: ${subject}
+              </h1>
+              <p style="margin: 0 0 10px; font-size: 16px; line-height: 1.8; color: #334155;">
+                <strong>Client:</strong> ${fromName ?? "Unknown"}<br />
+                <strong>Email:</strong> ${fromEmail}
+              </p>
+              <div style="font-size: 16px; line-height: 1.8; color: #334155; white-space: pre-wrap;">${message}</div>
+            </div>
+          </div>
+        `,
+      }),
+    ),
+  );
 };

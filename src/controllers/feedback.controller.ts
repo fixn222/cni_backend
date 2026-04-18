@@ -58,7 +58,7 @@ export const createFeedback = async (req: Request, res: Response) => {
 export const getFeedbacks = async (req: Request, res: Response) => {
 
     try {
-
+        const user = (req as any).user
 
         const feedBacks = await Feedback.find()
             .populate("user", "name")
@@ -66,7 +66,7 @@ export const getFeedbacks = async (req: Request, res: Response) => {
 
         if (!feedBacks) return res.status(500).json({ message: "Internal Server error" })
 
-        res.status(200).json(feedBacks);
+        res.status(200).json({feedBacks , user});
 
     } catch (e: any) {
 

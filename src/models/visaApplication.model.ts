@@ -3,16 +3,18 @@ import mongoose, { Schema, Document } from "mongoose";
 //InterFace
 export interface VisaApplictaionDocument extends Document {
     user: mongoose.Types.ObjectId;
+    country : mongoose.Types.ObjectId;
     clientDetails: {
         fullName: String
         passportNumber: String
         nationality: String
-        dateofBirth: Date
+        dateofBirth?: Date
 
     };
+
     visaDetails: {
         visaType: String,
-        travelPurpose: String,
+        purpose: String,
         travelDate: Date,
         duration: Number,
         notes?: String
@@ -22,10 +24,16 @@ export interface VisaApplictaionDocument extends Document {
 
 const visaApplictaionSchema = new Schema<VisaApplictaionDocument>(
     {
-        //RELATION
+        //RELATIONS
         user: {
             type: Schema.Types.ObjectId,
             ref: "User",
+            required: true
+        },
+
+        country: {
+            type: Schema.Types.ObjectId,
+            ref: "Country",
             required: true
         },
         //CLIENT DETAILS
@@ -44,7 +52,7 @@ const visaApplictaionSchema = new Schema<VisaApplictaionDocument>(
             },
             dateofBirth: {
                 type: Date,
-                required: true
+                required: false
             }
         },
         //APPLICATION DETAILS
@@ -53,7 +61,7 @@ const visaApplictaionSchema = new Schema<VisaApplictaionDocument>(
                 type: String,
                 required: true
             },
-            travelPurpose: {
+            purpose: {
                 type: String,
                 required: true
             },
@@ -67,11 +75,20 @@ const visaApplictaionSchema = new Schema<VisaApplictaionDocument>(
             },
             notes: {
                 type: String,
-                required: true
+                required: false,
+                default: ""
             },
-
         }
+        ,
+        status: {
+            type: String,
+            enum: ["pending", "approved", "rejected"],
+            default: "pending",
+        }
+    },
+    {
+        timestamps: true
     }
 )
 
-export const VisaApplictaion = mongoose.model<VisaApplictaionDocument>("VisaApplication", visaApplictaionSchema);
+export const VisaApplication = mongoose.model<VisaApplictaionDocument>("VisaApplication", visaApplictaionSchema);
