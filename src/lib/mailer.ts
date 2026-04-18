@@ -1,33 +1,143 @@
-import nodemailer from "nodemailer" ;
+import nodemailer from "nodemailer";
 
 const getRequiredEnv = (name: string) => {
   const value = process.env[name];
 
   if (!value) {
-    
     throw new Error(`Missing required environment variable: ${name}`);
   }
 
   return value;
 };
 
-const smtpPort = Number(process.env.SMTP_PORT ?? 587);
-const smtpSecure = process.env.SMTP_SECURE === "true";
+const isProduction = process.env.NODE_ENV === "production";
 
-const getTransporter = () =>
-  nodemailer.createTransport({
-    host: getRequiredEnv("SMTP_HOST"),
-    port: smtpPort,
-    secure: smtpSecure,
-    auth: {
-      user: getRequiredEnv("SMTP_USER"),
-      pass: getRequiredEnv("SMTP_PASS"),
-    },
-  });
+let transporter: nodemailer.Transporter | null = null;
+
+const getSmtpPort = () => {
+  const rawPort = process.env.SMTP_PORT ?? "587";
+  const parsedPort = Number.parseInt(rawPort, 10);
+
+  if (Number.isNaN(parsedPort)) {
+    throw new Error(`Invalid SMTP_PORT value: ${rawPort}`);
+  }
+
+  return parsedPort;
+};
+
+const isSecureTransport = (port: number) =>
+  process.env.SMTP_SECURE === "true" || port === 465;
+
+const getTransporter = () => {
+  if (!transporter) {
+    const port = getSmtpPort();
+    const user = getRequiredEnv("SMTP_USER");
+    const pass = getRequiredEnv("SMTP_PASS");
+
+    transporter = nodemailer.createTransport({
+      host: getRequiredEnv("SMTP_HOST"),
+      port,
+      secure: isSecureTransport(port),
+      auth: {
+        user,
+        pass,
+      },
+    });
+  }
+
+  return transporter;
+};
 
 const getFromAddress = () =>
   process.env.MAIL_FROM ??
-  `CNI Global <${getRequiredEnv("SMTP_USER")}>`;
+  process.env.SMTP_FROM ??
+  process.env.SMTP_USER ??
+  "noreply@example.com";
+
+const hasConfiguredSmtp = () =>
+  Boolean(
+    process.env.SMTP_HOST &&
+      process.env.SMTP_USER &&
+      process.env.SMTP_PASS &&
+      getFromAddress()
+  );
+
+const shouldSkipExternalEmail = () => !isProduction && !hasConfiguredSmtp();
+
+const logEmailPreview = ({
+  to,
+  subject,
+  reason,
+}: {
+  to: string[];
+  subject: string;
+  reason: string;
+}) => {
+  console.warn(
+    `[mailer] ${reason}. Email not sent via SMTP. to=${to.join(", ")} subject="${subject}"`
+  );
+};
+
+const getEmailErrorMessage = (error: unknown) => {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return "Unknown email provider error";
+};
+
+const sendEmail = async ({
+  to,
+  subject,
+  text,
+  html,
+  replyTo,
+}: {
+  to: string | string[];
+  subject: string;
+  text: string;
+  html: string;
+  replyTo?: string | string[];
+}) => {
+  const recipients = Array.isArray(to) ? to : [to];
+  const from = getFromAddress();
+
+  if (shouldSkipExternalEmail()) {
+    logEmailPreview({
+      to: recipients,
+      subject,
+      reason:
+        "Development email transport is active because SMTP is not fully configured",
+    });
+    return;
+  }
+
+  try {
+    await getTransporter().sendMail({
+      from,
+      to: recipients,
+      subject,
+      text,
+      html,
+      replyTo,
+    });
+  } catch (error) {
+    const message = getEmailErrorMessage(error);
+
+    if (!isProduction) {
+      logEmailPreview({
+        to: recipients,
+        subject,
+        reason: `SMTP request failed (${message})`,
+      });
+      return;
+    }
+
+    throw new Error(
+      `Email delivery failed. Check SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, and MAIL_FROM. Provider error: ${message}`
+    );
+  }
+};
 
 const buildEmailLayout = ({
   heading,
@@ -95,8 +205,7 @@ export const sendVerificationEmail = async ({
       "If you did not create this account, you can ignore this email safely.",
   });
 
-  await getTransporter().sendMail({
-    from: getFromAddress(),
+  await sendEmail({
     to,
     subject,
     text: content.text,
@@ -123,10 +232,8 @@ export const sendResetPasswordEmail = async ({
       "If you did not request a password reset, you can ignore this email and your account will stay unchanged.",
   });
 
-  await getTransporter().sendMail({
-    from: getFromAddress(),
+  await sendEmail({
     to,
-    
     subject,
     text: content.text,
     html: content.html,
@@ -158,21 +265,18 @@ export const sendVerificationCodeEmail = async ({
     "sign-in": {
       subject: "Your CNI Global sign-in code",
       heading: "Complete sign in",
-      intro:
-        "Use the code below to complete your sign-in request.",
+      intro: "Use the code below to complete your sign-in request.",
     },
     "change-email": {
       subject: "Your CNI Global email change code",
       heading: "Confirm your new email",
-      intro:
-        "Use the code below to confirm your email address change.",
+      intro: "Use the code below to confirm your email address change.",
     },
   } as const;
 
   const content = emailTypeCopy[type];
 
-  await getTransporter().sendMail({
-    from: getFromAddress(),
+  await sendEmail({
     to,
     subject: content.subject,
     text: `${content.heading}
@@ -181,7 +285,7 @@ ${content.intro}
 
 Verification code: ${otp}
 
-This code will expire soon.`,
+This code expires in 10 minutes.`,
     html: `
       <div style="font-family: Arial, sans-serif; background: #f8fafc; padding: 32px;">
         <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border-radius: 16px; padding: 32px; border: 1px solid #e2e8f0;">
@@ -194,11 +298,11 @@ This code will expire soon.`,
           <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.7; color: #334155;">
             ${content.intro}
           </p>
-          <div style="display: inline-block; padding: 14px 18px; border-radius: 12px; background: #0f172a; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: 0.35em;">
+          <div style="display: inline-block; margin: 0 0 24px; padding: 16px 20px; border-radius: 12px; background: #ecfeff; border: 1px solid #99f6e4; font-size: 32px; font-weight: 700; letter-spacing: 0.35em; color: #0f172a;">
             ${otp}
           </div>
-          <p style="margin: 24px 0 0; font-size: 13px; line-height: 1.7; color: #64748b;">
-            This code will expire soon.
+          <p style="margin: 0; font-size: 13px; line-height: 1.7; color: #64748b;">
+            This code expires in 10 minutes.
           </p>
         </div>
       </div>
@@ -217,17 +321,18 @@ export const sendApplicationConfirmationEmail = async ({
   countryName: string;
   applicationId: string;
 }) => {
-  const subject = "Your Visa Application Has Been Submitted - CNI Global";
+  const subject = "We received your visa application";
+  const dashboardUrl =
+    process.env.FRONT_END_URL ?? "http://localhost:5173";
   const content = buildEmailLayout({
-    heading: "Application Submitted Successfully",
-    intro: `Hi ${name ?? "there"}, your visa application for ${countryName} has been successfully submitted. Our team will review your application and get back to you soon.`,
-    actionLabel: "View Application",
-    actionUrl: `${process.env.FRONT_END_URL}/dashboard/applications/${applicationId}`,
-    footer: "If you have any questions, please contact our support team.",
+    heading: "Application received",
+    intro: `Hi ${name ?? "there"}, your visa application for ${countryName} was submitted successfully. Reference: ${applicationId}. Our team will review it and contact you with the next steps.`,
+    actionLabel: "View your dashboard",
+    actionUrl: dashboardUrl,
+    footer: "Thank you for choosing CNI Global.",
   });
 
-  await getTransporter().sendMail({
-    from: getFromAddress(),
+  await sendEmail({
     to,
     subject,
     text: content.text,
@@ -246,35 +351,53 @@ export const sendAdminNewApplicationNotificationEmail = async ({
   countryName: string;
   visaType: string;
 }) => {
-  await getTransporter().sendMail({
-    from: getFromAddress(),
-    to,
-    subject: "New Visa Application Submitted",
-    text: `A new visa application has been submitted.
+  const subject = "New visa application submitted";
+  const adminDashboardUrl =
+    process.env.ADMIN_DASHBOARD_URL ??
+    `${process.env.FRONT_END_URL ?? "http://localhost:5173"}/admin`;
 
-Applicant: ${applicantName}
-Country: ${countryName}
-Visa Type: ${visaType}`,
-    html: `
-      <div style="font-family: Arial, sans-serif; background: #f8fafc; padding: 32px;">
-        <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border-radius: 16px; padding: 32px; border: 1px solid #e2e8f0;">
-          <p style="margin: 0 0 12px; font-size: 12px; letter-spacing: 0.18em; color: #0f766e; font-weight: 700;">
-            CNI GLOBAL
-          </p>
-          <h1 style="margin: 0 0 16px; font-size: 28px; line-height: 1.2; color: #0f172a;">
-            New Visa Application Submitted
-          </h1>
-          <p style="margin: 0 0 10px; font-size: 16px; line-height: 1.7; color: #334155;">
-            A new application is ready for admin review.
-          </p>
-          <ul style="padding-left: 18px; margin: 16px 0 0; color: #334155; line-height: 1.8;">
-            <li><strong>Applicant:</strong> ${applicantName}</li>
-            <li><strong>Country:</strong> ${countryName}</li>
-            <li><strong>Visa Type:</strong> ${visaType}</li>
-          </ul>
-        </div>
-      </div>
-    `,
+  const content = buildEmailLayout({
+    heading: "New application submitted",
+    intro: `${applicantName} submitted a ${visaType} application for ${countryName}. Review the application details in the admin dashboard.`,
+    actionLabel: "Open admin dashboard",
+    actionUrl: adminDashboardUrl,
+    footer: "This notification was sent automatically by the CNI Global backend.",
+  });
+
+  await sendEmail({
+    to,
+    subject,
+    text: content.text,
+    html: content.html,
+  });
+};
+
+export const sendApplicationStatusUpdateEmail = async ({
+  to,
+  name,
+  status,
+  countryName,
+}: {
+  to: string;
+  name?: string | null;
+  status: string;
+  countryName: string;
+}) => {
+  const dashboardUrl = process.env.FRONT_END_URL ?? "http://localhost:5173";
+  const subject = `Your visa application is now ${status}`;
+  const content = buildEmailLayout({
+    heading: "Application status updated",
+    intro: `Hi ${name ?? "there"}, your visa application for ${countryName} has been updated to ${status}.`,
+    actionLabel: "Check application",
+    actionUrl: dashboardUrl,
+    footer: "Reply to this email if you need help from the CNI Global team.",
+  });
+
+  await sendEmail({
+    to,
+    subject,
+    text: content.text,
+    html: content.html,
   });
 };
 
@@ -287,67 +410,25 @@ export const sendAdminClientEmail = async ({
   subject: string;
   message: string;
 }) => {
-  await getTransporter().sendMail({
-    from: getFromAddress(),
+  const html = `
+    <div style="font-family: Arial, sans-serif; background: #f8fafc; padding: 32px;">
+      <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border-radius: 16px; padding: 32px; border: 1px solid #e2e8f0;">
+        <p style="margin: 0 0 12px; font-size: 12px; letter-spacing: 0.18em; color: #0f766e; font-weight: 700;">
+          CNI GLOBAL
+        </p>
+        <h1 style="margin: 0 0 16px; font-size: 24px; line-height: 1.2; color: #0f172a;">
+          ${subject}
+        </h1>
+        <div style="font-size: 16px; line-height: 1.7; color: #334155; white-space: pre-wrap;">${message}</div>
+      </div>
+    </div>
+  `;
+
+  await sendEmail({
     to,
     subject,
     text: message,
-    html: `
-      <div style="font-family: Arial, sans-serif; background: #f8fafc; padding: 32px;">
-        <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border-radius: 16px; padding: 32px; border: 1px solid #e2e8f0;">
-          <p style="margin: 0 0 12px; font-size: 12px; letter-spacing: 0.18em; color: #0f766e; font-weight: 700;">
-            CNI GLOBAL
-          </p>
-          <h1 style="margin: 0 0 16px; font-size: 28px; line-height: 1.2; color: #0f172a;">
-            ${subject}
-          </h1>
-          <div style="font-size: 16px; line-height: 1.8; color: #334155; white-space: pre-wrap;">${message}</div>
-        </div>
-      </div>
-    `,
-  });
-};
-
-export const sendApplicationStatusUpdateEmail = async ({
-  to,
-  name,
-  status,
-  countryName,
-}: {
-  to: string;
-  name?: string | null;
-  status: "pending" | "approved" | "rejected";
-  countryName: string;
-}) => {
-  const statusTitle =
-    status === "approved"
-      ? "Application approved"
-      : status === "rejected"
-        ? "Application update"
-        : "Application moved to pending review";
-
-  const intro = `Hi ${name ?? "there"}, your visa application for ${countryName} is now marked as ${status}. We will contact you for more details and guide you through the next steps.`;
-
-  await getTransporter().sendMail({
-    from: getFromAddress(),
-    to,
-    subject: `Your Visa Application Status: ${statusTitle}`,
-    text: intro,
-    html: `
-      <div style="font-family: Arial, sans-serif; background: #f8fafc; padding: 32px;">
-        <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border-radius: 16px; padding: 32px; border: 1px solid #e2e8f0;">
-          <p style="margin: 0 0 12px; font-size: 12px; letter-spacing: 0.18em; color: #0f766e; font-weight: 700;">
-            CNI GLOBAL
-          </p>
-          <h1 style="margin: 0 0 16px; font-size: 28px; line-height: 1.2; color: #0f172a;">
-            ${statusTitle}
-          </h1>
-          <p style="margin: 0; font-size: 16px; line-height: 1.8; color: #334155;">
-            ${intro}
-          </p>
-        </div>
-      </div>
-    `,
+    html,
   });
 };
 
@@ -360,39 +441,34 @@ export const sendUserMessageToAdminsEmail = async ({
 }: {
   recipients: string[];
   fromName?: string | null;
-  fromEmail: string;
+  fromEmail?: string | null;
   subject: string;
   message: string;
 }) => {
-  if (recipients.length === 0) {
-    return;
-  }
+  const html = `
+    <div style="font-family: Arial, sans-serif; background: #f8fafc; padding: 32px;">
+      <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border-radius: 16px; padding: 32px; border: 1px solid #e2e8f0;">
+        <p style="margin: 0 0 12px; font-size: 12px; letter-spacing: 0.18em; color: #0f766e; font-weight: 700;">
+          CNI GLOBAL
+        </p>
+        <h1 style="margin: 0 0 16px; font-size: 24px; line-height: 1.2; color: #0f172a;">
+          ${subject}
+        </h1>
+        <p style="margin: 0 0 16px; font-size: 14px; line-height: 1.7; color: #475569;">
+          From: ${fromName ?? "Unknown sender"}${fromEmail ? ` (${fromEmail})` : ""}
+        </p>
+        <div style="font-size: 16px; line-height: 1.7; color: #334155; white-space: pre-wrap;">${message}</div>
+      </div>
+    </div>
+  `;
 
-  await Promise.all(
-    recipients.map((recipient) =>
-      getTransporter().sendMail({
-        from: getFromAddress(),
-        to: recipient,
-        subject: `Client Message: ${subject}`,
-        text: `Client: ${fromName ?? "Unknown"}\nEmail: ${fromEmail}\n\n${message}`,
-        html: `
-          <div style="font-family: Arial, sans-serif; background: #f8fafc; padding: 32px;">
-            <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border-radius: 16px; padding: 32px; border: 1px solid #e2e8f0;">
-              <p style="margin: 0 0 12px; font-size: 12px; letter-spacing: 0.18em; color: #0f766e; font-weight: 700;">
-                CNI GLOBAL
-              </p>
-              <h1 style="margin: 0 0 16px; font-size: 28px; line-height: 1.2; color: #0f172a;">
-                Client Message: ${subject}
-              </h1>
-              <p style="margin: 0 0 10px; font-size: 16px; line-height: 1.8; color: #334155;">
-                <strong>Client:</strong> ${fromName ?? "Unknown"}<br />
-                <strong>Email:</strong> ${fromEmail}
-              </p>
-              <div style="font-size: 16px; line-height: 1.8; color: #334155; white-space: pre-wrap;">${message}</div>
-            </div>
-          </div>
-        `,
-      }),
-    ),
-  );
+  await sendEmail({
+    to: recipients,
+    subject,
+    text: `From: ${fromName ?? "Unknown sender"}${fromEmail ? ` (${fromEmail})` : ""}
+
+${message}`,
+    html,
+    replyTo: fromEmail ?? undefined,
+  });
 };

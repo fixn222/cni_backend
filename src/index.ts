@@ -15,13 +15,42 @@ dotenv.config()
 
 const app = express();
 const PORT = process.env.PORT;
+const normalizedAllowedOrigins = (process.env.FRONT_END_URL ?? "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean)
+    .map((origin) => {
+        try {
+            return new URL(origin).origin;
+        } catch {
+            return origin.replace(/\/$/, "");
+        }
+    });
 
 app.use(express.json());
 
 
 
 app.use(cors({
-    origin: process.env.FRONT_END_URL, //your frontend
+    origin: (origin, callback) => {
+        if (!origin) {
+            return callback(null, true);
+        }
+
+        const normalizedOrigin = (() => {
+            try {
+                return new URL(origin).origin;
+            } catch {
+                return origin.replace(/\/$/, "");
+            }
+        })();
+
+        if (normalizedAllowedOrigins.includes(normalizedOrigin)) {
+            return callback(null, true);
+        }
+
+        return callback(new Error(`Origin ${origin} is not allowed by CORS`));
+    },
     credentials: true
 }))
 

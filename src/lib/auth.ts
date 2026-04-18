@@ -6,7 +6,17 @@ import dotenv from 'dotenv'
 import { sendResetPasswordEmail, sendVerificationCodeEmail, sendVerificationEmail } from "./mailer.ts";
 dotenv.config()
 
+const normalizeOrigin = (value?: string | null) => {
+    if (!value) {
+        return null;
+    }
 
+    try {
+        return new URL(value).origin;
+    } catch {
+        return value.replace(/\/$/, "");
+    }
+}
 
 const client = new MongoClient(process.env.MONGODB_URI!);
 const db = client.db()
@@ -15,6 +25,8 @@ const configuredBaseUrl = process.env.BETTER_AUTH_URL ?? "http://localhost:8000"
 const normalizedBaseUrl = configuredBaseUrl.endsWith(authBasePath)
     ? configuredBaseUrl
     : `${configuredBaseUrl.replace(/\/$/, "")}${authBasePath}`;
+const frontendOrigin = normalizeOrigin(process.env.FRONT_END_URL);
+const isProduction = process.env.NODE_ENV === "production";
 
 
 export const auth = betterAuth({
@@ -52,7 +64,16 @@ export const auth = betterAuth({
             });
         },
     },
-    trustedOrigins : [process.env.FRONT_END_URL!] ,
+    trustedOrigins : [frontendOrigin].filter((origin): origin is string => Boolean(origin)),
+    advanced: {
+        useSecureCookies: isProduction,
+        defaultCookieAttributes: isProduction
+            ? {
+                sameSite: "none",
+                secure: true,
+            }
+            : undefined,
+    },
     plugins: [
         emailOTP({
             expiresIn: 60 * 10,
