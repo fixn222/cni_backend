@@ -1,4 +1,4 @@
-import nodemailer from "nodemailer";
+import { Resend } from "resend";
 
 const getRequiredEnv = (name: string) => {
   const value = process.env[name];
@@ -12,57 +12,27 @@ const getRequiredEnv = (name: string) => {
 
 const isProduction = process.env.NODE_ENV === "production";
 
-let transporter: nodemailer.Transporter | null = null;
+let resendClient: Resend | null = null;
 
-const getSmtpPort = () => {
-  const rawPort = process.env.SMTP_PORT ?? "587";
-  const parsedPort = Number.parseInt(rawPort, 10);
-
-  if (Number.isNaN(parsedPort)) {
-    throw new Error(`Invalid SMTP_PORT value: ${rawPort}`);
+const getResendClient = () => {
+  if (!resendClient) {
+    resendClient = new Resend(getRequiredEnv("RESEND_API_KEY"));
   }
 
-  return parsedPort;
-};
-
-const isSecureTransport = (port: number) =>
-  process.env.SMTP_SECURE === "true" || port === 465;
-
-const getTransporter = () => {
-  if (!transporter) {
-    const port = getSmtpPort();
-    const user = getRequiredEnv("SMTP_USER");
-    const pass = getRequiredEnv("SMTP_PASS");
-
-    transporter = nodemailer.createTransport({
-      host: getRequiredEnv("SMTP_HOST"),
-      port,
-      secure: isSecureTransport(port),
-      auth: {
-        user,
-        pass,
-      },
-    });
-  }
-
-  return transporter;
+  return resendClient;
 };
 
 const getFromAddress = () =>
-  process.env.MAIL_FROM ??
-  process.env.SMTP_FROM ??
-  process.env.SMTP_USER ??
-  "noreply@example.com";
+  process.env.MAIL_FROM ?? "CNI Global <noreply@example.com>";
 
-const hasConfiguredSmtp = () =>
+const hasConfiguredResend = () =>
   Boolean(
-    process.env.SMTP_HOST &&
-      process.env.SMTP_USER &&
-      process.env.SMTP_PASS &&
+    process.env.RESEND_API_KEY &&
+      process.env.RESEND_API_KEY !== "re_replace_me" &&
       getFromAddress()
   );
 
-const shouldSkipExternalEmail = () => !isProduction && !hasConfiguredSmtp();
+const shouldSkipExternalEmail = () => !isProduction && !hasConfiguredResend();
 
 const logEmailPreview = ({
   to,
@@ -74,7 +44,7 @@ const logEmailPreview = ({
   reason: string;
 }) => {
   console.warn(
-    `[mailer] ${reason}. Email not sent via SMTP. to=${to.join(", ")} subject="${subject}"`
+    `[mailer] ${reason}. Email not sent. to=${to.join(", ")} subject="${subject}"`
   );
 };
 
@@ -107,13 +77,19 @@ const sendEmail = async ({
       to: recipients,
       subject,
       reason:
-        "Development email transport is active because SMTP is not fully configured",
+        "Development email preview is active because Resend is not configured",
     });
     return;
   }
 
+  if (!hasConfiguredResend()) {
+    throw new Error(
+      "Email delivery failed. Set RESEND_API_KEY and MAIL_FROM to send email with Resend."
+    );
+  }
+
   try {
-    await getTransporter().sendMail({
+    const result = await getResendClient().emails.send({
       from,
       to: recipients,
       subject,
@@ -121,20 +97,15 @@ const sendEmail = async ({
       html,
       replyTo,
     });
+
+    if (result.error) {
+      throw new Error(result.error.message);
+    }
   } catch (error) {
     const message = getEmailErrorMessage(error);
 
-    if (!isProduction) {
-      logEmailPreview({
-        to: recipients,
-        subject,
-        reason: `SMTP request failed (${message})`,
-      });
-      return;
-    }
-
     throw new Error(
-      `Email delivery failed. Check SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, and MAIL_FROM. Provider error: ${message}`
+      `Email delivery failed. Check RESEND_API_KEY and MAIL_FROM. Provider error: ${message}`
     );
   }
 };

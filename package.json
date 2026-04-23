@@ -19,7 +19,7 @@
     "express": "^5.2.1",
     "mongodb": "^7.1.1",
     "mongoose": "^9.4.1",
-    "nodemailer": "^7.0.13",
+    "resend": "^4.8.0",
     "tsx": "^4.21.0"
   },
   "devDependencies": {

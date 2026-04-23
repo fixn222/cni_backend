@@ -343,7 +343,7 @@ export const updateApplication = async (req: Request, res: Response) => {
         $set : updateData
       },
       {
-        new : true ,
+        returnDocument: "after",
         runValidators : true,
       }
 

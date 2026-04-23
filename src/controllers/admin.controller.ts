@@ -213,7 +213,7 @@ export const updateUserRole = async (req: Request, res: Response) => {
     const updatedUser = await User.findByIdAndUpdate(
       id,
       { $set: { role } },
-      { new: true, runValidators: true },
+      { returnDocument: "after", runValidators: true },
     ).lean();
 
     if (!updatedUser) {
@@ -286,7 +286,7 @@ export const updateAdminApplicationStatus = async (req: Request, res: Response) 
     const application = await VisaApplication.findByIdAndUpdate(
       id,
       { $set: { status } },
-      { new: true, runValidators: true },
+      { returnDocument: "after", runValidators: true },
     )
       .populate("country", "name code flag")
       .populate("user", "name email")
@@ -316,6 +316,7 @@ export const updateAdminApplicationStatus = async (req: Request, res: Response) 
         name: application.user.name,
         status,
         countryName: application.country?.name ?? "your destination",
+        
       });
     }
 
